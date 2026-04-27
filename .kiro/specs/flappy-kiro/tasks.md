@@ -6,7 +6,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
 
 ## Tareas
 
-- [-] 1. Crear la estructura base del archivo `index.html`
+- [x] 1. Crear la estructura base del archivo `index.html`
   - Crear `index.html` con el elemento `<canvas>` que ocupe todo el viewport (`width: 100vw; height: 100vh; display: block`)
   - Añadir el bloque `<script>` con el objeto `CONFIG` completo tal como está definido en el diseño (physics, pipes, clouds, ghosty, colors, ui, storage, loop)
   - Definir el enum `GameState` con los valores `IDLE`, `PLAYING`, `GAMEOVER`
@@ -14,7 +14,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
   - _Requisitos: 1.1, 1.2_
 
 - [ ] 2. Implementar `ScoreManager` y su persistencia en `localStorage`
-  - [~] 2.1 Implementar la clase `ScoreManager`
+  - [ ] 2.1 Implementar la clase `ScoreManager`
     - Escribir los métodos `reset()`, `increment()`, `getScore()`, `getHighScore()`, `saveHighScore()` y `loadHighScore()`
     - `reset()` pone el puntaje a 0 pero preserva el récord
     - `saveHighScore()` y `loadHighScore()` usan `CONFIG.storage.highScoreKey` y envuelven las operaciones en `try/catch`
@@ -41,7 +41,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - **Valida: Requisito 6.1**
 
 - [ ] 3. Implementar `PhysicsEngine`
-  - [~] 3.1 Implementar la clase `PhysicsEngine`
+  - [ ] 3.1 Implementar la clase `PhysicsEngine`
     - Escribir `constructor(viewportHeight)`, `reset(startY)`, `applyFlap()`, `update(deltaTime)`, `getY()` y `getVelocity()`
     - `applyFlap()` establece la velocidad a `-(CONFIG.physics.flapImpulseRatio * viewportHeight)` sin importar el valor previo
     - `update(dt)` aplica `velocity += gravity * dt` y luego limita a `terminalVel`; actualiza posición con la velocidad antes del clamp
@@ -63,7 +63,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - **Valida: Requisito 3.4**
 
 - [ ] 4. Implementar `PipeManager`
-  - [~] 4.1 Implementar la clase `PipeManager`
+  - [ ] 4.1 Implementar la clase `PipeManager`
     - Escribir `constructor(viewportWidth, viewportHeight)`, `reset()`, `update(deltaTime, score)`, `getPipes()` y `checkScoring(ghostX)`
     - `reset()` posiciona todos los pares fuera de pantalla a la derecha con el hueco base
     - `update()` desplaza tubos a `pipeSpeed * (1 + score * CONFIG.pipes.speedIncrement)` y recicla los que salen por la izquierda
@@ -86,17 +86,17 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - Tras múltiples ciclos de reciclaje, verificar que `gapSize >= gapMinRatio * viewportHeight`, que el hueco está dentro del área jugable, y que el espaciado entre pares consecutivos es ≥ `spacingRatio * viewportWidth`
     - **Valida: Requisitos 4.3, 4.4, 4.6**
 
-- [~] 5. Punto de control — Verificar módulos de lógica central
+- [ ] 5. Punto de control — Verificar módulos de lógica central
   - Asegurarse de que todas las pruebas de `ScoreManager`, `PhysicsEngine` y `PipeManager` pasan. Consultar al usuario si surgen dudas.
 
-- [~] 6. Implementar `CloudLayer`
+- [ ] 6. Implementar `CloudLayer`
   - Escribir `constructor(viewportWidth, viewportHeight)`, `reset()`, `update(deltaTime, isPlaying)` y `getClouds()`
   - Inicializar `CONFIG.clouds.count` nubes con posiciones, tamaños, opacidades y velocidades aleatorias dentro de los rangos de `CONFIG.clouds`
   - La velocidad de cada nube es proporcional a su opacidad (más opaca = más rápida)
   - `update()` solo mueve las nubes cuando `isPlaying === true`; recicla las que salen por la izquierda con nueva posición Y aleatoria
   - _Requisitos: 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [~] 7. Implementar `AudioManager`
+- [ ] 7. Implementar `AudioManager`
   - Escribir `constructor()`, `preload()`, `playJump()`, `playGameOver()` y `unlock()`
   - `preload()` crea objetos `Audio` para `assets/jump.wav` y `assets/game_over.wav`
   - `playJump()` y `playGameOver()` reinician `currentTime = 0` antes de llamar a `play()`; envuelven `play()` en `try/catch`
@@ -108,7 +108,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - Verificar que `playJump()` y `playGameOver()` no lanzan excepciones cuando el audio no está disponible (fallback silencioso)
     - _Requisitos: 8.1, 8.4_
 
-- [~] 8. Implementar `InputHandler`
+- [ ] 8. Implementar `InputHandler`
   - Escribir `constructor(canvas, onFlap)`, `attach()` y `detach()`
   - `attach()` registra `keydown` (Space), `mousedown` y `touchstart` en el canvas
   - `touchstart` llama a `preventDefault()` para evitar scroll en móvil
@@ -120,7 +120,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - Verificar que `detach()` elimina los listeners correctamente
     - _Requisitos: 2.1, 2.2, 2.3_
 
-- [~] 9. Implementar `Renderer`
+- [ ] 9. Implementar `Renderer`
   - Escribir `constructor(canvas, ctx)` y los métodos: `drawBackground()`, `drawClouds(clouds)`, `drawPipes(pipes, pipeWidth)`, `drawGhosty(x, y, img, size)`, `drawScoreBar(score, high)`, `drawIdleOverlay(isMobile)` y `drawGameOverOverlay()`
   - Todos los colores se leen de `CONFIG.colors`; todos los tamaños de fuente de `CONFIG.ui`
   - `drawGhosty()` usa `assets/ghosty.png`; si la imagen no carga, dibuja un rectángulo de color como fallback
@@ -135,7 +135,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - _Requisitos: 7.9, 7.10, 9.5, 9.6_
 
 - [ ] 10. Implementar `GameController` e integrar todos los módulos
-  - [~] 10.1 Implementar la clase `GameController`
+  - [ ] 10.1 Implementar la clase `GameController`
     - Escribir `constructor(canvas)`, `init()`, `start()`, `update(deltaTime)`, `render()`, `handleFlap()`, `handleResize()`, `transitionTo(state)` y `reset()`
     - `init()` instancia todos los módulos, registra `InputHandler`, llama a `AudioManager.preload()` y `ScoreManager.loadHighScore()`, y arranca el bucle con `requestAnimationFrame`
     - El bucle calcula `deltaTime` limitado a `CONFIG.loop.maxDeltaTime` ms
@@ -144,7 +144,7 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - `handleFlap()` según el estado: idle → playing + playJump; playing → applyFlap + playJump; gameover → idle
     - _Requisitos: 1.3, 1.4, 2.4, 2.5, 2.6, 2.7, 5.3, 5.4, 9.1, 9.2_
 
-  - [~] 10.2 Implementar la detección de colisiones AABB en `GameController`
+  - [ ] 10.2 Implementar la detección de colisiones AABB en `GameController`
     - Calcular el bounding box reducido de Ghosty aplicando `CONFIG.ghosty.collisionInset` por cada lado
     - Evaluar colisión contra cada tubo superior e inferior de `PipeManager.getPipes()`
     - Evaluar colisión contra el borde superior (y = 0) y el borde inferior (y = viewportHeight - scoreBarHeight)
@@ -161,12 +161,12 @@ Implementar Flappy Kiro como un único archivo `index.html` con HTML5 Canvas y J
     - Usar `fc.integer({ min: 100 })` para W y H; llamar a `handleResize(W, H)`; verificar que `canvas.width === W`, `canvas.height === H` y que todos los parámetros derivados coinciden con `CONFIG.*Ratio * W` o `CONFIG.*Ratio * H`
     - **Valida: Requisitos 9.2, 9.3, 9.4**
 
-  - [~] 10.5 Implementar el balanceo idle de Ghosty en el bucle de renderizado
+  - [ ] 10.5 Implementar el balanceo idle de Ghosty en el bucle de renderizado
     - En el estado `IDLE`, calcular el desplazamiento Y con `Math.sin(timestamp * CONFIG.ghosty.bobFrequency) * CONFIG.ghosty.bobAmplitude * viewportHeight`
     - Pasar la posición resultante a `Renderer.drawGhosty()`
     - _Requisitos: 1.3, 3.5_
 
-- [~] 11. Punto de control final — Verificar integración completa
+- [ ] 11. Punto de control final — Verificar integración completa
   - Asegurarse de que todas las pruebas pasan (propiedades y ejemplos). Abrir `index.html` en el navegador y verificar manualmente: carga inicial, aleteo, colisiones, puntaje, récord persistido, redimensionamiento de ventana y audio. Consultar al usuario si surgen dudas.
 
 ## Notas

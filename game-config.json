@@ -1,0 +1,11 @@
+{
+  "physics": {
+    "gravity": 800,
+    "jumpVelocity": -300
+  },
+  "walls": {
+    "speed": 120,
+    "gapSize": 140,
+    "spacing": 350
+  }
+}
