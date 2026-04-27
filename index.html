@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Kiro</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    // ─────────────────────────────────────────────────────────────────────────
+    // CONFIG — Todos los valores configurables del juego. Ningún componente
+    // usa números mágicos; todos los parámetros se leen desde este objeto.
+    // ─────────────────────────────────────────────────────────────────────────
+    const CONFIG = {
+      physics: {
+        gravityRatio:      0.0018,  // gravedad = viewportHeight * gravityRatio  (px/ms²)
+        flapImpulseRatio:  0.45,    // impulso  = viewportHeight * flapImpulseRatio (px/ms)
+        terminalVelRatio:  0.80,    // vel. terminal = viewportHeight * terminalVelRatio (px/ms)
+      },
+      pipes: {
+        count:             4,
+        spacingRatio:      0.45,    // espaciado mínimo = viewportWidth * spacingRatio
+        widthRatio:        0.10,    // ancho tubo = viewportWidth * widthRatio
+        baseSpeedRatio:    0.0003,  // velocidad base = viewportWidth * baseSpeedRatio (px/ms)
+        speedIncrement:    0.02,    // factor de incremento de velocidad por punto (2%)
+        gapBaseRatio:      0.38,    // hueco base = viewportHeight * gapBaseRatio
+        gapMinRatio:       0.22,    // hueco mínimo = viewportHeight * gapMinRatio
+        gapReductionRatio: 0.015,   // reducción por reciclaje = viewportHeight * ratio
+        gapReductionProb:  0.30,    // probabilidad de reducir el hueco al reciclar (30%)
+      },
+      clouds: {
+        count:             6,
+        minOpacity:        0.3,
+        maxOpacity:        0.8,
+        minSpeedRatio:     0.00005, // nube lenta  = viewportWidth * minSpeedRatio (px/ms)
+        maxSpeedRatio:     0.00015, // nube rápida = viewportWidth * maxSpeedRatio (px/ms)
+        minWidthRatio:     0.08,    // ancho mínimo nube = viewportWidth * ratio
+        maxWidthRatio:     0.18,    // ancho máximo nube = viewportWidth * ratio
+        heightRatio:       0.06,    // alto nube = viewportHeight * ratio
+        borderRadius:      12,      // px fijos para el redondeo de esquinas
+      },
+      ghosty: {
+        xRatio:            0.30,    // posición X fija = viewportWidth * xRatio
+        sizeRatio:         0.07,    // tamaño (ancho y alto) = viewportHeight * sizeRatio
+        collisionInset:    0.20,    // reducción del bounding box (20% por lado)
+        bobAmplitude:      0.015,   // amplitud del balanceo idle = viewportHeight * ratio
+        bobFrequency:      0.002,   // frecuencia del balanceo idle (ciclos/ms)
+      },
+      colors: {
+        sky:               '#87CEEB',
+        pipeBody:          '#4CAF50',
+        pipeBorder:        '#2E7D32',
+        scoreBar:          '#1a1a2e',
+        scoreText:         '#FFFFFF',
+        overlayBg:         'rgba(0, 0, 0, 0.45)',
+        overlayText:       '#FFFFFF',
+        cloud:             'rgba(255, 255, 255, 1)', // opacidad se aplica por nube
+      },
+      ui: {
+        scoreBarHeight:    48,       // px fijos
+        fontFamily:        'monospace',
+        scoreFontSize:     22,       // px fijos
+        overlayFontSize:   0.06,     // tamaño overlay = viewportHeight * ratio
+      },
+      storage: {
+        highScoreKey:      'flappyKiroHigh',
+      },
+      loop: {
+        maxDeltaTime:      50,       // ms máximo por frame para evitar saltos de física
+        resizeDebounce:    100,      // ms de debounce para el handler de resize
+      },
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GameState — Enum de estados posibles del juego
+    // ─────────────────────────────────────────────────────────────────────────
+    const GameState = {
+      IDLE:     'idle',
+      PLAYING:  'playing',
+      GAMEOVER: 'gameover',
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ScoreManager — Tarea 2
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PhysicsEngine — Tarea 3
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PipeManager — Tarea 4
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CloudLayer — Tarea 6
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // AudioManager — Tarea 7
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // InputHandler — Tarea 8
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Renderer — Tarea 9
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GameController — Tarea 10
+    // ─────────────────────────────────────────────────────────────────────────
+
+  </script>
+</body>
+</html>
