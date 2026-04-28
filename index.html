@@ -5,132 +5,1308 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Flappy Kiro</title>
   <style>
-    *, *::before, *::after {
-      box-sizing: border-box;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #000;
-    }
-    #gameCanvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-      margin: 0;
-      padding: 0;
-    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+    #gameCanvas { display: block; position: fixed; top: 0; left: 0; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    #playerName:focus { border-color:#fff; color:#fff; }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
 
+  <div id="intro" style="
+    position:fixed; inset:0; background:#000; color:#0f0;
+    font-family:monospace; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; z-index:10;
+    user-select:none;
+  ">
+    <div style="font-size:clamp(28px,6vw,64px); letter-spacing:8px; margin-bottom:16px; color:#fff; text-shadow:0 0 20px #0f0;">
+      FLAPPY KIRO
+    </div>
+    <div id="introHiScore" style="font-size:clamp(12px,2vw,20px); margin-bottom:32px; color:#ff0; letter-spacing:2px;"></div>
+    <div style="margin-bottom:24px; font-size:clamp(12px,2vw,18px); color:#0f0;">
+      INGRESA TU NOMBRE:
+    </div>
+    <input id="playerName" maxlength="10" autocomplete="off" style="
+      background:#000; border:2px solid #0f0; color:#0f0;
+      font-family:monospace; font-size:clamp(16px,3vw,28px);
+      text-align:center; padding:8px 16px; width:220px;
+      outline:none; letter-spacing:4px; margin-bottom:32px;
+      text-transform:uppercase;
+    " placeholder="PLAYER1" />
+    <div id="introScores" style="font-size:clamp(10px,1.5vw,16px); margin-bottom:32px; color:#0f0; text-align:center; line-height:1.8;"></div>
+    <button id="startBtn" style="
+      background:#000; border:2px solid #0f0; color:#0f0;
+      font-family:monospace; font-size:clamp(14px,2.5vw,22px);
+      padding:12px 32px; cursor:pointer; letter-spacing:4px;
+      animation: blink 1s step-end infinite;
+    ">&#9654; PRESS ENTER TO START</button>
+  </div>
+
   <script>
     // ─────────────────────────────────────────────────────────────────────────
-    // CONFIG — Todos los valores configurables del juego. Ningún componente
-    // usa números mágicos; todos los parámetros se leen desde este objeto.
+    // CONFIG
     // ─────────────────────────────────────────────────────────────────────────
     const CONFIG = {
       physics: {
-        gravityRatio:      0.0018,  // gravedad = viewportHeight * gravityRatio  (px/ms²)
-        flapImpulseRatio:  0.45,    // impulso  = viewportHeight * flapImpulseRatio (px/ms)
-        terminalVelRatio:  0.80,    // vel. terminal = viewportHeight * terminalVelRatio (px/ms)
+        // Todos los valores en px/s o px/s² — el engine convierte deltaTime de ms a s
+        gravity:      900,   // px/s²  — aceleración gravitacional (GD usa ~1800, nosotros más suave)
+        jumpForce:    380,   // px/s   — velocidad inicial al saltar (hacia arriba = negativo)
+        maxFallSpeed: 420,   // px/s   — velocidad máxima de caída
+        // Easing asimétrico: la subida frena más rápido que la bajada
+        // Se logra aplicando más gravedad cuando velocity > 0 (cayendo)
+        fallMultiplier: 1.6, // multiplicador de gravedad al caer (hace la bajada más lenta que GD puro)
+        lowJumpMultiplier: 1.2, // multiplicador cuando sube pero no se mantiene el botón
       },
       pipes: {
         count:             4,
-        spacingRatio:      0.45,    // espaciado mínimo = viewportWidth * spacingRatio
-        widthRatio:        0.10,    // ancho tubo = viewportWidth * widthRatio
-        baseSpeedRatio:    0.0003,  // velocidad base = viewportWidth * baseSpeedRatio (px/ms)
-        speedIncrement:    0.02,    // factor de incremento de velocidad por punto (2%)
-        gapBaseRatio:      0.38,    // hueco base = viewportHeight * gapBaseRatio
-        gapMinRatio:       0.22,    // hueco mínimo = viewportHeight * gapMinRatio
-        gapReductionRatio: 0.015,   // reducción por reciclaje = viewportHeight * ratio
-        gapReductionProb:  0.30,    // probabilidad de reducir el hueco al reciclar (30%)
+        spacingRatio:      0.50,     // más espacio entre tubos para dar tiempo de reacción
+        widthRatio:        0.10,
+        // Velocidad en px/s (no px/ms) — se convierte en update con dt/1000
+        baseSpeed:         120,      // px/s al inicio — lento y manejable
+        maxSpeed:          280,      // px/s máximo — nunca supera esto
+        accelRate:         0.008,    // qué tan rápido aumenta la velocidad (lerp factor por frame)
+        speedPerScore:     2.5,      // px/s adicionales por cada punto de score
+        gapBaseRatio:      0.42,
+        gapMinRatio:       0.28,
+        gapReductionRatio: 0.012,
+        gapReductionProb:  0.20,
       },
       clouds: {
-        count:             6,
-        minOpacity:        0.3,
-        maxOpacity:        0.8,
-        minSpeedRatio:     0.00005, // nube lenta  = viewportWidth * minSpeedRatio (px/ms)
-        maxSpeedRatio:     0.00015, // nube rápida = viewportWidth * maxSpeedRatio (px/ms)
-        minWidthRatio:     0.08,    // ancho mínimo nube = viewportWidth * ratio
-        maxWidthRatio:     0.18,    // ancho máximo nube = viewportWidth * ratio
-        heightRatio:       0.06,    // alto nube = viewportHeight * ratio
-        borderRadius:      12,      // px fijos para el redondeo de esquinas
+        count: 6, minOpacity: 0.3, maxOpacity: 0.8,
+        minSpeedRatio: 0.00005, maxSpeedRatio: 0.00015,
+        minWidthRatio: 0.08, maxWidthRatio: 0.18,
+        heightRatio: 0.06, borderRadius: 12,
       },
       ghosty: {
-        xRatio:            0.30,    // posición X fija = viewportWidth * xRatio
-        sizeRatio:         0.07,    // tamaño (ancho y alto) = viewportHeight * sizeRatio
-        collisionInset:    0.20,    // reducción del bounding box (20% por lado)
-        bobAmplitude:      0.015,   // amplitud del balanceo idle = viewportHeight * ratio
-        bobFrequency:      0.002,   // frecuencia del balanceo idle (ciclos/ms)
+        xRatio: 0.25, sizeRatio: 0.07,
+        collisionInset: 0.15,
+        bobAmplitude: 0.015, bobFrequency: 0.002,
       },
       colors: {
-        sky:               '#87CEEB',
-        pipeBody:          '#4CAF50',
-        pipeBorder:        '#2E7D32',
-        scoreBar:          '#1a1a2e',
-        scoreText:         '#FFFFFF',
-        overlayBg:         'rgba(0, 0, 0, 0.45)',
-        overlayText:       '#FFFFFF',
-        cloud:             'rgba(255, 255, 255, 1)', // opacidad se aplica por nube
+        sky: '#87CEEB', pipeBody: '#4CAF50', pipeBorder: '#2E7D32',
+        scoreBar: '#1a1a2e', scoreText: '#FFFFFF',
+        overlayBg: 'rgba(0,0,0,0.6)', overlayText: '#FFFFFF',
+        cloud: 'rgba(255,255,255,1)',
       },
       ui: {
-        scoreBarHeight:    48,       // px fijos
-        fontFamily:        'monospace',
-        scoreFontSize:     22,       // px fijos
-        overlayFontSize:   0.06,     // tamaño overlay = viewportHeight * ratio
+        scoreBarHeight: 56,
+        fontFamily: 'monospace',
+        scoreFontSize: 18,
+        overlayFontSize: 0.06,
       },
-      storage: {
-        highScoreKey:      'flappyKiroHigh',
-      },
-      loop: {
-        maxDeltaTime:      50,       // ms máximo por frame para evitar saltos de física
-        resizeDebounce:    100,      // ms de debounce para el handler de resize
+      storage: { highScoreKey: 'flappyKiroHigh', scoresKey: 'flappyKiroScores' },
+      loop: { maxDeltaTime: 50, resizeDebounce: 100, targetFPS: 30 },
+      lives: { max: 3 },
+      powerups: {
+        lifeInterval:  15000,
+        beretInterval: 20000,
+        coinInterval:   8000,  // boinas negras cada ~8s — frecuentes como monedas Mario
+        size: 32,
+        coinSize: 24,          // boinas negras más pequeñas
+        speedRatio: 0.0003,
       },
     };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // GameState — Enum de estados posibles del juego
+    // GameState
     // ─────────────────────────────────────────────────────────────────────────
-    const GameState = {
-      IDLE:     'idle',
-      PLAYING:  'playing',
-      GAMEOVER: 'gameover',
-    };
+    const GameState = { INTRO: 'intro', IDLE: 'idle', PLAYING: 'playing', GAMEOVER: 'gameover' };
 
     // ─────────────────────────────────────────────────────────────────────────
-    // ScoreManager — Tarea 2
+    // ScoreManager
     // ─────────────────────────────────────────────────────────────────────────
+    class ScoreManager {
+      constructor() {
+        this.score = 0;
+        this.highScore = 0;
+      }
+
+      reset() { this.score = 0; }
+
+      increment() {
+        this.score += 5;
+        if (this.score > this.highScore) this.highScore = this.score;
+      }
+
+      addPoints(n) {
+        this.score += n;
+        if (this.score > this.highScore) this.highScore = this.score;
+      }
+
+      getScore()     { return this.score; }
+      getHighScore() { return this.highScore; }
+
+      saveHighScore() {
+        try { localStorage.setItem(CONFIG.storage.highScoreKey, String(this.highScore)); } catch(e) {}
+      }
+
+      loadHighScore() {
+        try {
+          const stored = localStorage.getItem(CONFIG.storage.highScoreKey);
+          if (stored !== null) {
+            const parsed = parseInt(stored, 10);
+            if (Number.isInteger(parsed)) this.highScore = parsed;
+          }
+        } catch(e) {}
+      }
+
+      // Save a named score entry to the leaderboard (top 5 kept)
+      saveNamedScore(name, score) {
+        try {
+          const key = CONFIG.storage.scoresKey;
+          let scores = [];
+          const raw = localStorage.getItem(key);
+          if (raw) scores = JSON.parse(raw);
+          scores.push({ name: name || 'PLAYER1', score });
+          scores.sort((a, b) => b.score - a.score);
+          scores = scores.slice(0, 5);
+          localStorage.setItem(key, JSON.stringify(scores));
+        } catch(e) {}
+      }
+
+      // Returns top N scores from leaderboard
+      getTopScores(n) {
+        try {
+          const raw = localStorage.getItem(CONFIG.storage.scoresKey);
+          if (!raw) return [];
+          const scores = JSON.parse(raw);
+          return scores.slice(0, n);
+        } catch(e) { return []; }
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PhysicsEngine — Tarea 3
+    // PhysicsEngine — física en px/s, deltaTime convertido de ms a s
     // ─────────────────────────────────────────────────────────────────────────
+    class PhysicsEngine {
+      constructor(viewportHeight) {
+        this.viewportHeight = viewportHeight;
+        // Escalar fuerzas proporcionalmente al viewport para consistencia en distintas pantallas
+        const scale = viewportHeight / 600; // 600px como referencia base
+        this.gravity          = CONFIG.physics.gravity          * scale;
+        this.jumpForce        = CONFIG.physics.jumpForce        * scale;
+        this.maxFallSpeed     = CONFIG.physics.maxFallSpeed     * scale;
+        this.fallMultiplier   = CONFIG.physics.fallMultiplier;
+        this.lowJumpMultiplier = CONFIG.physics.lowJumpMultiplier;
+
+        this.y        = 0;
+        this.velocity = 0; // px/s, negativo = arriba
+      }
+
+      reset(startY) {
+        this.y        = startY;
+        this.velocity = 0;
+      }
+
+      // Salto: establece velocidad hacia arriba (no acumulativo — como GD)
+      // Cada tap da el mismo impulso limpio, lo que da control preciso
+      applyFlap() {
+        this.velocity = -this.jumpForce;
+      }
+
+      // dt en milisegundos → convertir a segundos para física en px/s
+      update(dt) {
+        const dtSec = dt / 1000;
+
+        // Gravedad asimétrica: cae más lento que sube (sensación GD)
+        // Cuando velocity > 0 (cayendo), aplicar fallMultiplier
+        let grav = this.gravity;
+        if (this.velocity > 0) {
+          grav *= this.fallMultiplier;
+        }
+
+        // Integración: velocidad primero, luego posición (Verlet semi-implícito)
+        const prevVelocity = this.velocity;
+        this.velocity += grav * dtSec;
+
+        // Limitar velocidad de caída
+        if (this.velocity > this.maxFallSpeed) {
+          this.velocity = this.maxFallSpeed;
+        }
+
+        // Actualizar posición con velocidad promedio (más suave que Euler puro)
+        this.y += ((prevVelocity + this.velocity) / 2) * dtSec;
+      }
+
+      getY()        { return this.y; }
+      getVelocity() { return this.velocity; }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // PipeManager — Tarea 4
+    // PipeManager
     // ─────────────────────────────────────────────────────────────────────────
+    class PipeManager {
+      constructor(viewportWidth, viewportHeight) {
+        this.viewportWidth  = viewportWidth;
+        this.viewportHeight = viewportHeight;
+        this.pipeWidth  = viewportWidth  * CONFIG.pipes.widthRatio;
+        this.gapBase    = viewportHeight * CONFIG.pipes.gapBaseRatio;
+        this.gapMin     = viewportHeight * CONFIG.pipes.gapMinRatio;
+        this.spacing    = viewportWidth  * CONFIG.pipes.spacingRatio;
+        this.scoreBarH  = CONFIG.ui.scoreBarHeight;
+
+        // Velocidad en px/s — escalar por viewport para consistencia entre pantallas
+        const scale = viewportWidth / 800; // 800px como referencia
+        this.baseSpeed = CONFIG.pipes.baseSpeed * scale;
+        this.maxSpeed  = CONFIG.pipes.maxSpeed  * scale;
+
+        // Velocidad actual (interpolada con lerp)
+        this.currentSpeed = this.baseSpeed;
+
+        this.pipes = [];
+        this.reset();
+      }
+
+      reset() {
+        this.currentSpeed = this.baseSpeed;
+        this.pipes = [];
+        const gapSize = this.gapBase;
+        for (let i = 0; i < CONFIG.pipes.count; i++) {
+          this.pipes.push({
+            x: this.viewportWidth + i * this.spacing,
+            gapCenterY: this._randomGapCenter(gapSize),
+            gapSize,
+            scored: false,
+            style: Math.random() < 0.5 ? 'flame' : 'classic',
+          });
+        }
+      }
+
+      _randomGapCenter(gapSize) {
+        const minCenter = gapSize / 2;
+        const maxCenter = this.viewportHeight - this.scoreBarH - gapSize / 2;
+        return minCenter + Math.random() * (maxCenter - minCenter);
+      }
+
+      // Lerp helper: mueve 'a' hacia 'b' en factor t (0-1)
+      _lerp(a, b, t) { return a + (b - a) * t; }
+
+      update(deltaTime, score) {
+        const dtSec = deltaTime / 1000;
+
+        // Velocidad objetivo basada en score — aumenta gradualmente
+        const targetSpeed = Math.min(
+          this.baseSpeed + score * CONFIG.pipes.speedPerScore,
+          this.maxSpeed
+        );
+
+        // Lerp suave hacia la velocidad objetivo (ease-in natural)
+        // Factor de lerp ajustado por deltaTime para consistencia entre FPS
+        const lerpFactor = 1 - Math.pow(1 - CONFIG.pipes.accelRate, dtSec * 60);
+        this.currentSpeed = this._lerp(this.currentSpeed, targetSpeed, lerpFactor);
+
+        for (const pipe of this.pipes) {
+          pipe.x -= this.currentSpeed * dtSec;
+          if (pipe.x + this.pipeWidth < 0) {
+            const maxX = Math.max(...this.pipes.map(p => p.x));
+            pipe.x = maxX + this.spacing;
+            pipe.scored = false;
+            pipe.style = Math.random() < 0.5 ? 'flame' : 'classic'; // aleatorio al reciclar
+            if (Math.random() < CONFIG.pipes.gapReductionProb) {
+              pipe.gapSize = Math.max(
+                pipe.gapSize - CONFIG.pipes.gapReductionRatio * this.viewportHeight,
+                this.gapMin
+              );
+            }
+            pipe.gapCenterY = this._randomGapCenter(pipe.gapSize);
+          }
+        }
+      }
+
+      getCurrentSpeed() { return this.currentSpeed; }
+      getPipes()        { return this.pipes; }
+
+      checkScoring(ghostX) {
+        let scored = false;
+        for (const pipe of this.pipes) {
+          if (!pipe.scored && ghostX > pipe.x + this.pipeWidth) {
+            pipe.scored = true;
+            scored = true;
+          }
+        }
+        return scored;
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // CloudLayer — Tarea 6
+    // CloudLayer
     // ─────────────────────────────────────────────────────────────────────────
+    class CloudLayer {
+      constructor(viewportWidth, viewportHeight) {
+        this.viewportWidth  = viewportWidth;
+        this.viewportHeight = viewportHeight;
+        this.clouds = [];
+        this.reset();
+      }
+
+      reset() {
+        this.clouds = [];
+        const cfg = CONFIG.clouds;
+        const minSpeed = this.viewportWidth * cfg.minSpeedRatio;
+        const maxSpeed = this.viewportWidth * cfg.maxSpeedRatio;
+        const minWidth = this.viewportWidth * cfg.minWidthRatio;
+        const maxWidth = this.viewportWidth * cfg.maxWidthRatio;
+        const height   = this.viewportHeight * cfg.heightRatio;
+        const opRange  = cfg.maxOpacity - cfg.minOpacity;
+        for (let i = 0; i < cfg.count; i++) {
+          const opacity = cfg.minOpacity + Math.random() * opRange;
+          const opFrac  = (opacity - cfg.minOpacity) / opRange;
+          const speed   = minSpeed + opFrac * (maxSpeed - minSpeed);
+          const width   = minWidth + Math.random() * (maxWidth - minWidth);
+          this.clouds.push({
+            x: Math.random() * this.viewportWidth,
+            y: Math.random() * (this.viewportHeight - height),
+            width, height, opacity, speed,
+          });
+        }
+      }
+
+      update(deltaTime, isPlaying) {
+        if (!isPlaying) return;
+        const height = this.viewportHeight * CONFIG.clouds.heightRatio;
+        for (const cloud of this.clouds) {
+          cloud.x -= cloud.speed * deltaTime;
+          if (cloud.x + cloud.width < 0) {
+            cloud.x = this.viewportWidth;
+            cloud.y = Math.random() * (this.viewportHeight - height);
+          }
+        }
+      }
+
+      getClouds() { return this.clouds; }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // AudioManager — Tarea 7
+    // AudioManager
     // ─────────────────────────────────────────────────────────────────────────
+    class AudioManager {
+      constructor() {
+        this.jumpSound     = null;
+        this.gameOverSound = null;
+        this._audioCtx     = null;
+      }
+
+      preload() {
+        this.jumpSound     = new Audio('assets/jump.wav');
+        this.gameOverSound = new Audio('assets/game_over.wav');
+      }
+
+      _getAudioCtx() {
+        if (!this._audioCtx) {
+          try { this._audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+        }
+        return this._audioCtx;
+      }
+
+      // Genera un "ouch" sintético con Web Audio API — no necesita archivo
+      playOuch() {
+        const ctx = this._getAudioCtx();
+        if (!ctx) return;
+        try {
+          const osc  = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          // Tono descendente rápido — suena a "ouch"
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(520, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.18);
+          gain.gain.setValueAtTime(0.35, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.22);
+        } catch(e) {}
+      }
+
+      // Sonido de moneda al recoger boina negra
+      playCoin() {
+        const ctx = this._getAudioCtx();
+        if (!ctx) return;
+        try {
+          const osc  = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.08);
+          gain.gain.setValueAtTime(0.3, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+          osc.start(ctx.currentTime);
+          osc.stop(ctx.currentTime + 0.2);
+        } catch(e) {}
+      }
+
+      playJump() {
+        if (!this.jumpSound) return;
+        try { this.jumpSound.currentTime = 0; this.jumpSound.play().catch(() => {}); } catch(e) {}
+      }
+
+      playGameOver() {
+        if (!this.gameOverSound) return;
+        try { this.gameOverSound.currentTime = 0; this.gameOverSound.play().catch(() => {}); } catch(e) {}
+      }
+
+      unlock() {
+        // Desbloquear AudioContext en primer toque
+        const ctx = this._getAudioCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+        [this.jumpSound, this.gameOverSound].forEach(snd => {
+          if (!snd) return;
+          snd.play().then(() => { snd.pause(); snd.currentTime = 0; }).catch(() => {});
+        });
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // InputHandler — Tarea 8
+    // InputHandler
     // ─────────────────────────────────────────────────────────────────────────
+    class InputHandler {
+      constructor(canvas, onFlap) {
+        this.canvas  = canvas;
+        this.onFlap  = onFlap;
+        this._onKeyDown    = this._handleKeyDown.bind(this);
+        this._onMouseDown  = this._handleMouseDown.bind(this);
+        this._onTouchStart = this._handleTouchStart.bind(this);
+      }
+
+      attach() {
+        document.addEventListener('keydown',       this._onKeyDown);
+        this.canvas.addEventListener('mousedown',  this._onMouseDown);
+        this.canvas.addEventListener('touchstart', this._onTouchStart);
+      }
+
+      detach() {
+        document.removeEventListener('keydown',       this._onKeyDown);
+        this.canvas.removeEventListener('mousedown',  this._onMouseDown);
+        this.canvas.removeEventListener('touchstart', this._onTouchStart);
+      }
+
+      _handleKeyDown(e) {
+        if (e.code === 'Space' || e.key === ' ') this.onFlap();
+      }
+      _handleMouseDown()  { this.onFlap(); }
+      _handleTouchStart(e) { e.preventDefault(); this.onFlap(); }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Renderer — Tarea 9
+    // PowerUpManager
     // ─────────────────────────────────────────────────────────────────────────
+    class PowerUpManager {
+      constructor(viewportWidth, viewportHeight) {
+        this.viewportWidth  = viewportWidth;
+        this.viewportHeight = viewportHeight;
+        this.powerups = [];
+        this._lifeTimer   = 0;
+        this._beretTimer  = 0;
+        this._coinTimer   = 0;  // boinas negras — frecuentes como monedas Mario
+        this._lifeInterval  = CONFIG.powerups.lifeInterval;
+        this._beretInterval = CONFIG.powerups.beretInterval;
+        this._coinInterval  = CONFIG.powerups.coinInterval;
+        this.reset();
+      }
+
+      reset() {
+        this.powerups    = [];
+        this._lifeTimer  = Math.random() * this._lifeInterval;
+        this._beretTimer = Math.random() * this._beretInterval;
+        this._coinTimer  = Math.random() * this._coinInterval * 0.5; // primera moneda rápido
+      }
+
+      update(deltaTime, pipeSpeed) {
+        const dtSec = deltaTime / 1000;
+
+        this._lifeTimer  += deltaTime;
+        this._beretTimer += deltaTime;
+        this._coinTimer  += deltaTime;
+
+        if (this._lifeTimer >= this._lifeInterval)   { this._lifeTimer  = 0; this._spawn('life');  }
+        if (this._beretTimer >= this._beretInterval) { this._beretTimer = 0; this._spawn('beret'); }
+        if (this._coinTimer >= this._coinInterval)   { this._coinTimer  = 0; this._spawnCoinRow(); }
+
+        for (const pu of this.powerups) {
+          pu.x -= pipeSpeed * dtSec;
+        }
+
+        this.powerups = this.powerups.filter(pu => pu.x + pu.size > 0);
+      }
+
+      _spawn(type) {
+        const scoreBarH = CONFIG.ui.scoreBarHeight;
+        const size = CONFIG.powerups.size;
+        const minY = size;
+        const maxY = this.viewportHeight - scoreBarH - size;
+        this.powerups.push({
+          x: this.viewportWidth + size,
+          y: minY + Math.random() * (maxY - minY),
+          type,
+          size,
+          active: true,
+        });
+      }
+
+      // Spawn una fila de 3-5 boinas negras en arco, como monedas de Mario
+      _spawnCoinRow() {
+        const scoreBarH = CONFIG.ui.scoreBarHeight;
+        const size = CONFIG.powerups.coinSize;
+        const count = 3 + Math.floor(Math.random() * 3); // 3 a 5 boinas
+        const centerY = size * 2 + Math.random() * (this.viewportHeight - scoreBarH - size * 4);
+        const spacing = size * 1.8;
+        for (let i = 0; i < count; i++) {
+          // Arco suave: las del centro están más arriba
+          const arcOffset = -Math.sin((i / (count - 1)) * Math.PI) * size * 1.5;
+          this.powerups.push({
+            x: this.viewportWidth + size + i * spacing,
+            y: centerY + arcOffset,
+            type: 'coin',
+            size,
+            active: true,
+          });
+        }
+      }
+
+      getPowerUps() { return this.powerups; }
+
+      // Returns collected power-up type or null
+      checkCollection(ghostX, ghostY, ghostSize) {
+        const inset = ghostSize * CONFIG.ghosty.collisionInset;
+        const gLeft   = ghostX - ghostSize / 2 + inset;
+        const gRight  = ghostX + ghostSize / 2 - inset;
+        const gTop    = ghostY - ghostSize / 2 + inset;
+        const gBottom = ghostY + ghostSize / 2 - inset;
+
+        for (let i = 0; i < this.powerups.length; i++) {
+          const pu = this.powerups[i];
+          if (!pu.active) continue;
+          const half = pu.size / 2;
+          const pLeft   = pu.x - half;
+          const pRight  = pu.x + half;
+          const pTop    = pu.y - half;
+          const pBottom = pu.y + half;
+
+          if (gRight > pLeft && gLeft < pRight && gBottom > pTop && gTop < pBottom) {
+            pu.active = false;
+            this.powerups.splice(i, 1);
+            return pu.type;
+          }
+        }
+        return null;
+      }
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // GameController — Tarea 10
+    // Renderer
     // ─────────────────────────────────────────────────────────────────────────
+    class Renderer {
+      constructor(canvas, ctx, logicalWidth, logicalHeight) {
+        this.canvas = canvas;
+        this.ctx    = ctx;
+        this.w      = logicalWidth;
+        this.h      = logicalHeight;
+      }
+
+      resize(w, h) { this.w = w; this.h = h; }
+
+      drawBackground(bgImg1, bgImg2, score) {
+        const ctx = this.ctx;
+
+        // Cambiar fondo cada 50 puntos: bg1 → bg2 → bg1 → ...
+        const bgIndex = Math.floor(score / 50) % 2;
+        const img = bgIndex === 0 ? bgImg1 : bgImg2;
+
+        if (img && img.complete && img.naturalWidth > 0) {
+          // Dibujar imagen de fondo cubriendo todo el canvas
+          ctx.drawImage(img, 0, 0, this.w, this.h);
+        } else {
+          // Fallback: color sólido mientras carga
+          ctx.fillStyle = bgIndex === 0 ? '#0a0a2e' : '#1a0000';
+          ctx.fillRect(0, 0, this.w, this.h);
+        }
+      }
+
+      drawClouds(clouds) {
+        const ctx = this.ctx;
+        const r   = CONFIG.clouds.borderRadius;
+        for (const cloud of clouds) {
+          ctx.save();
+          ctx.globalAlpha = cloud.opacity;
+          ctx.fillStyle   = CONFIG.colors.cloud;
+          ctx.beginPath();
+          ctx.roundRect(cloud.x, cloud.y, cloud.width, cloud.height, r);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      drawPipes(pipes, pipeWidth) {
+        const ctx = this.ctx;
+        for (const pipe of pipes) {
+          const topH    = pipe.gapCenterY - pipe.gapSize / 2;
+          const bottomY = pipe.gapCenterY + pipe.gapSize / 2;
+
+          if (pipe.style === 'flame') {
+            // ── Obstáculo de llamas ──────────────────────────────────────────
+            // Tubo superior de llamas
+            const grad1 = ctx.createLinearGradient(pipe.x, 0, pipe.x + pipeWidth, 0);
+            grad1.addColorStop(0, '#8B0000');
+            grad1.addColorStop(0.5, '#CC2200');
+            grad1.addColorStop(1, '#8B0000');
+            ctx.fillStyle = grad1;
+            ctx.fillRect(pipe.x, 0, pipeWidth, topH);
+
+            // Llamas en el borde inferior del tubo superior
+            const flameCount = Math.max(2, Math.floor(pipeWidth / 18));
+            const flameW = pipeWidth / flameCount;
+            ctx.font = `${Math.round(flameW * 1.1)}px serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            for (let i = 0; i < flameCount; i++) {
+              ctx.fillText('🔥', pipe.x + flameW * i + flameW / 2, topH - flameW * 0.9);
+            }
+
+            // Tubo inferior de llamas
+            const grad2 = ctx.createLinearGradient(pipe.x, 0, pipe.x + pipeWidth, 0);
+            grad2.addColorStop(0, '#8B0000');
+            grad2.addColorStop(0.5, '#CC2200');
+            grad2.addColorStop(1, '#8B0000');
+            ctx.fillStyle = grad2;
+            ctx.fillRect(pipe.x, bottomY, pipeWidth, this.h - bottomY);
+
+            // Llamas en el borde superior del tubo inferior
+            ctx.textBaseline = 'bottom';
+            for (let i = 0; i < flameCount; i++) {
+              ctx.fillText('🔥', pipe.x + flameW * i + flameW / 2, bottomY + flameW * 0.9);
+            }
+
+          } else {
+            // ── Tubo clásico verde ───────────────────────────────────────────
+            ctx.fillStyle = CONFIG.colors.pipeBody;
+            ctx.fillRect(pipe.x, 0, pipeWidth, topH);
+            ctx.fillRect(pipe.x, bottomY, pipeWidth, this.h - bottomY);
+            // Bordes
+            ctx.fillStyle = CONFIG.colors.pipeBorder;
+            ctx.fillRect(pipe.x, 0, 4, topH);
+            ctx.fillRect(pipe.x + pipeWidth - 4, 0, 4, topH);
+            ctx.fillRect(pipe.x, bottomY, 4, this.h - bottomY);
+            ctx.fillRect(pipe.x + pipeWidth - 4, bottomY, 4, this.h - bottomY);
+            // Capuchón del tubo
+            ctx.fillStyle = CONFIG.colors.pipeBorder;
+            ctx.fillRect(pipe.x - 4, topH - 16, pipeWidth + 8, 16);
+            ctx.fillRect(pipe.x - 4, bottomY, pipeWidth + 8, 16);
+            ctx.fillStyle = CONFIG.colors.pipeBody;
+          }
+        }
+      }
+
+      drawGhosty(x, y, img, size, isInvincible, beretActive, velocityY) {
+        const ctx = this.ctx;
+        if (isInvincible && Math.floor(Date.now() / 150) % 2 === 0) return;
+
+        // Rotación basada en velocidad vertical — sube: inclina arriba, cae: inclina abajo
+        // Clamp entre -30° y 60° para que se vea natural
+        const maxUpAngle   = -30 * Math.PI / 180;
+        const maxDownAngle =  60 * Math.PI / 180;
+        const velNorm = Math.max(-1, Math.min(1, (velocityY || 0) / 400));
+        const angle = velNorm > 0
+          ? velNorm * maxDownAngle
+          : velNorm * (-maxUpAngle);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle);
+
+        try {
+          if (img && img.complete && img.naturalWidth > 0) {
+            ctx.drawImage(img, -size / 2, -size / 2, size, size);
+          } else {
+            ctx.fillStyle = '#aaaaff';
+            ctx.beginPath();
+            ctx.arc(0, 0, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } catch(e) {
+          ctx.fillStyle = '#aaaaff';
+          ctx.fillRect(-size / 2, -size / 2, size, size);
+        }
+
+        // Boina francesa encima de Ghosty cuando está activa
+        if (beretActive) {
+          this._drawBeret(ctx, 0, -size / 2 - 2, size * 0.65);
+        }
+
+        ctx.restore();
+      }
+
+      // Dibuja una boina francesa (círculo rojo con visera pequeña)
+      _drawBeret(ctx, cx, bottomY, diameter) {
+        const r = diameter / 2;
+        const topY = bottomY - diameter * 0.75;
+
+        ctx.save();
+        // Cuerpo de la boina — círculo rojo aplastado
+        ctx.fillStyle = '#CC0000';
+        ctx.beginPath();
+        ctx.ellipse(cx, topY + r * 0.3, r, r * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Borde oscuro
+        ctx.strokeStyle = '#880000';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Pompón en el centro
+        ctx.fillStyle = '#FF4444';
+        ctx.beginPath();
+        ctx.arc(cx + r * 0.15, topY - r * 0.1, r * 0.18, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Visera pequeña a la derecha
+        ctx.fillStyle = '#AA0000';
+        ctx.beginPath();
+        ctx.ellipse(cx + r * 0.7, topY + r * 0.55, r * 0.35, r * 0.12, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      drawPowerUps(powerups, timestamp) {
+        const ctx = this.ctx;
+        for (const pu of powerups) {
+          const pulse = 1 + 0.15 * Math.sin(timestamp * 0.005);
+          const drawSize = pu.size * pulse;
+          if (pu.type === 'life') {
+            ctx.font = `${Math.round(drawSize)}px serif`;
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('❤️', pu.x, pu.y);
+          } else if (pu.type === 'coin') {
+            // Boina negra estilo moneda Mario — brilla al pulsar
+            this._drawBlackBeret(ctx, pu.x, pu.y, drawSize);
+          } else {
+            // Boina francesa roja (power-up beret)
+            this._drawBeret(ctx, pu.x, pu.y + drawSize * 0.4, drawSize);
+          }
+        }
+      }
+
+      // Boina negra coleccionable — estilo moneda Mario
+      _drawBlackBeret(ctx, cx, cy, size) {
+        const r = size / 2;
+        ctx.save();
+        // Brillo dorado detrás (como moneda)
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur  = 8;
+        // Cuerpo negro aplastado
+        ctx.fillStyle = '#111111';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, r, r * 0.62, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Borde gris oscuro
+        ctx.strokeStyle = '#444444';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // Pompón blanco pequeño
+        ctx.fillStyle = '#CCCCCC';
+        ctx.beginPath();
+        ctx.arc(cx + r * 0.15, cy - r * 0.25, r * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+        // Visera pequeña
+        ctx.fillStyle = '#222222';
+        ctx.beginPath();
+        ctx.ellipse(cx + r * 0.65, cy + r * 0.2, r * 0.3, r * 0.1, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        // Texto "+2" encima
+        ctx.fillStyle = '#FFD700';
+        ctx.font = `bold ${Math.round(r * 0.7)}px monospace`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText('+2', cx, cy - r * 0.5);
+        ctx.restore();
+      }
+
+      // Score bar: left=score, center=player name, right=lives
+      drawScoreBar(score, high, lives, maxLives, playerName, beretUntil, currentTimestamp) {
+        const ctx     = this.ctx;
+        const barH    = CONFIG.ui.scoreBarHeight;
+        const y       = this.h - barH;
+        const midY    = y + barH / 2;
+
+        ctx.fillStyle = CONFIG.colors.scoreBar;
+        ctx.fillRect(0, y, this.w, barH);
+
+        const fs = CONFIG.ui.scoreFontSize;
+        ctx.fillStyle    = CONFIG.colors.scoreText;
+        ctx.font         = `${fs}px ${CONFIG.ui.fontFamily}`;
+        ctx.textBaseline = 'middle';
+
+        // Left: score + high score
+        const scoreStr = 'SCORE: ' + String(score).padStart(6, '0') + '  HI: ' + String(high).padStart(6, '0');
+        ctx.textAlign = 'left';
+        ctx.fillText(scoreStr, 12, midY);
+
+        // Center: player name
+        if (playerName) {
+          ctx.textAlign = 'center';
+          ctx.fillText(playerName.toUpperCase(), this.w / 2, midY);
+        }
+
+        // Beret countdown (center-right area)
+        if (beretUntil > currentTimestamp) {
+          const secsLeft = Math.ceil((beretUntil - currentTimestamp) / 1000);
+          ctx.textAlign = 'center';
+          ctx.font = `${fs}px ${CONFIG.ui.fontFamily}`;
+          ctx.fillStyle = '#CC0000';
+          ctx.fillText('🔴 BOINA ' + secsLeft + 's', this.w * 0.75, midY);
+          ctx.fillStyle = CONFIG.colors.scoreText;
+        }
+
+        // Right: lives as hearts (larger font)
+        ctx.font = `24px serif`;
+        ctx.textAlign = 'right';
+        const heartStr = '❤️'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, maxLives - lives));
+        ctx.fillText(heartStr, this.w - 12, midY);
+      }
+
+      drawIdleOverlay(isMobile) {
+        const ctx      = this.ctx;
+        const fontSize = Math.round(this.h * CONFIG.ui.overlayFontSize);
+        const msg      = isMobile ? 'Toca para Empezar' : 'Presiona Espacio o Haz Clic para Empezar';
+        ctx.fillStyle  = CONFIG.colors.overlayBg;
+        ctx.fillRect(0, 0, this.w, this.h);
+        ctx.fillStyle    = CONFIG.colors.overlayText;
+        ctx.font         = `${fontSize}px ${CONFIG.ui.fontFamily}`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(msg, this.w / 2, this.h / 2);
+      }
+
+      drawGameOverOverlay(score, playerName) {
+        const ctx      = this.ctx;
+        const fontSize = Math.round(this.h * CONFIG.ui.overlayFontSize);
+        ctx.fillStyle  = CONFIG.colors.overlayBg;
+        ctx.fillRect(0, 0, this.w, this.h);
+        ctx.fillStyle    = CONFIG.colors.overlayText;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = `bold ${Math.round(fontSize * 1.4)}px ${CONFIG.ui.fontFamily}`;
+        ctx.fillText('GAME OVER', this.w / 2, this.h / 2 - fontSize * 1.2);
+        ctx.font = `${fontSize}px ${CONFIG.ui.fontFamily}`;
+        ctx.fillText('SCORE: ' + String(score).padStart(6, '0'), this.w / 2, this.h / 2);
+        ctx.font = `${Math.round(fontSize * 0.8)}px ${CONFIG.ui.fontFamily}`;
+        ctx.fillStyle = '#aaa';
+        ctx.fillText('Toca / Espacio para volver al inicio', this.w / 2, this.h / 2 + fontSize * 1.4);
+      }
+
+      drawCountdown(secondsLeft) {
+        const ctx      = this.ctx;
+        const fontSize = Math.round(this.h * 0.12);
+        ctx.save();
+        ctx.globalAlpha  = 0.85;
+        ctx.fillStyle    = '#FFFFFF';
+        ctx.font         = `bold ${fontSize}px ${CONFIG.ui.fontFamily}`;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        const label = secondsLeft > 0 ? String(secondsLeft) : '¡GO!';
+        ctx.fillText(label, this.w / 2, this.h / 2 - this.h * 0.15);
+        ctx.restore();
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GameController
+    // ─────────────────────────────────────────────────────────────────────────
+    class GameController {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.ctx    = null;
+        this.state  = GameState.INTRO;
+        this.lastTimestamp  = null;
+        this._rafId         = null;
+        this._resizeTimer   = null;
+        this._lastFrameTime = null;
+
+        // Lives
+        this.lives = CONFIG.lives.max;
+        this._invincibleUntil = 0;
+        this._pipeDelayUntil  = 0;
+
+        // Beret power-up state
+        this._beretUntil = 0;
+
+        // Player name (set from intro screen)
+        this.playerName = '';
+
+        // Modules
+        this.scoreManager  = null;
+        this.physics       = null;
+        this.pipeManager   = null;
+        this.cloudLayer    = null;
+        this.audioManager  = null;
+        this.renderer      = null;
+        this.inputHandler  = null;
+        this.powerUpManager = null;
+
+        this.ghostyImg = null;
+        this.bgImg1    = null;
+        this.bgImg2    = null;
+        this.dims      = null;
+        this.isMobile  = false;
+
+        this._loop = this._loop.bind(this);
+      }
+
+      _calcDims() {
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        return {
+          width:      W,
+          height:     H,
+          ghostyX:    W * CONFIG.ghosty.xRatio,
+          ghostySize: H * CONFIG.ghosty.sizeRatio,
+          pipeWidth:  W * CONFIG.pipes.widthRatio,
+        };
+      }
+
+      init() {
+        // Canvas setup — physical pixels scaled by DPR, logic uses CSS pixels
+        const dpr = window.devicePixelRatio || 1;
+        const W   = window.innerWidth;
+        const H   = window.innerHeight;
+        this.canvas.width  = Math.round(W * dpr);
+        this.canvas.height = Math.round(H * dpr);
+        this.canvas.style.width  = W + 'px';
+        this.canvas.style.height = H + 'px';
+        this.ctx = this.canvas.getContext('2d');
+        this.ctx.scale(dpr, dpr);
+
+        this.dims = this._calcDims();
+
+        // Modules
+        this.scoreManager   = new ScoreManager();
+        this.physics        = new PhysicsEngine(this.dims.height);
+        this.pipeManager    = new PipeManager(this.dims.width, this.dims.height);
+        this.cloudLayer     = new CloudLayer(this.dims.width, this.dims.height);
+        this.audioManager   = new AudioManager();
+        this.powerUpManager = new PowerUpManager(this.dims.width, this.dims.height);
+        this.renderer       = new Renderer(this.canvas, this.ctx, W, H);
+
+        this.ghostyImg     = new Image();
+        this.ghostyImg.src = 'assets/ghosty.png';
+
+        // Fondos de Halloween — cambian según el score
+        this.bgImg1     = new Image();
+        this.bgImg1.src = 'assets/bg1.jpg';
+        this.bgImg2     = new Image();
+        this.bgImg2.src = 'assets/bg2.jpg';
+
+        this.isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+        this.inputHandler = new InputHandler(this.canvas, () => this.handleFlap());
+        this.inputHandler.attach();
+
+        this.audioManager.preload();
+        this.scoreManager.loadHighScore();
+
+        window.addEventListener('resize', () => {
+          clearTimeout(this._resizeTimer);
+          this._resizeTimer = setTimeout(() => this.handleResize(), CONFIG.loop.resizeDebounce);
+        });
+
+        this.state = GameState.INTRO;
+        this.lives = CONFIG.lives.max;
+        this._invincibleUntil = 0;
+        this._beretUntil      = 0;
+        this.physics.reset(this.dims.height / 2);
+
+        // Wire up intro screen
+        this._initIntroScreen();
+
+        // Start render loop (renders background/clouds even on intro)
+        this._rafId = requestAnimationFrame(this._loop);
+      }
+
+      _initIntroScreen() {
+        const introEl    = document.getElementById('intro');
+        const nameInput  = document.getElementById('playerName');
+        const startBtn   = document.getElementById('startBtn');
+        const hiScoreEl  = document.getElementById('introHiScore');
+        const scoresEl   = document.getElementById('introScores');
+
+        // Populate high score
+        const hi = this.scoreManager.getHighScore();
+        hiScoreEl.textContent = 'HI-SCORE: ' + String(hi).padStart(6, '0');
+
+        // Populate leaderboard
+        const top = this.scoreManager.getTopScores(3);
+        if (top.length > 0) {
+          scoresEl.innerHTML = '<div style="color:#ff0;margin-bottom:6px;letter-spacing:2px;">--- TOP SCORES ---</div>' +
+            top.map((s, i) => `<div>${i + 1}. ${(s.name || 'PLAYER1').toUpperCase().padEnd(10)} ${String(s.score).padStart(6, '0')}</div>`).join('');
+        } else {
+          scoresEl.textContent = '';
+        }
+
+        const doStart = () => {
+          const raw  = nameInput.value.trim();
+          this.playerName = raw.length > 0 ? raw.toUpperCase().slice(0, 10) : 'PLAYER1';
+          introEl.style.display = 'none';
+          this.audioManager.unlock();
+          this.transitionTo(GameState.IDLE);
+        };
+
+        startBtn.addEventListener('click', doStart);
+        nameInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') doStart();
+        });
+
+        // Focus the input
+        setTimeout(() => nameInput.focus(), 100);
+      }
+
+      // Called from intro screen to start the game proper
+      startGame() {
+        this.transitionTo(GameState.IDLE);
+      }
+
+      start() {
+        this.lastTimestamp  = null;
+        this._lastFrameTime = null;
+        this._rafId = requestAnimationFrame(this._loop);
+      }
+
+      _loop(timestamp) {
+        this._rafId = requestAnimationFrame(this._loop);
+
+        const minInterval = 1000 / CONFIG.loop.targetFPS;
+        if (this._lastFrameTime !== null && timestamp - this._lastFrameTime < minInterval) return;
+
+        if (this.lastTimestamp === null) this.lastTimestamp = timestamp;
+        const deltaTime = Math.min(timestamp - this.lastTimestamp, CONFIG.loop.maxDeltaTime);
+        this.lastTimestamp  = timestamp;
+        this._lastFrameTime = timestamp;
+
+        this.update(deltaTime);
+        this.render();
+      }
+
+      update(deltaTime) {
+        const isPlaying    = this.state === GameState.PLAYING;
+        const pipesActive  = isPlaying && this.lastTimestamp >= this._pipeDelayUntil;
+        const isInvincible = this.lastTimestamp <= this._invincibleUntil;
+        const beretActive  = this.lastTimestamp < this._beretUntil;
+
+        if (isPlaying) {
+          this.physics.update(deltaTime);
+
+          // Clamp Ghosty to playable area
+          const scoreBarH = CONFIG.ui.scoreBarHeight;
+          const halfSize  = this.dims.ghostySize / 2;
+          const minY = halfSize;
+          const maxY = this.dims.height - scoreBarH - halfSize;
+          if (this.physics.getY() < minY)  this.physics.reset(minY);
+          if (this.physics.getY() > maxY)  this.physics.reset(maxY);
+
+          if (pipesActive) {
+            this.pipeManager.update(deltaTime, this.scoreManager.getScore());
+            if (this.pipeManager.checkScoring(this.dims.ghostyX)) {
+              this.scoreManager.increment();
+            }
+
+            // Update power-ups
+            this.powerUpManager.update(deltaTime, this.pipeManager.getCurrentSpeed());
+            const collected = this.powerUpManager.checkCollection(
+              this.dims.ghostyX, this.physics.getY(), this.dims.ghostySize
+            );
+            if (collected === 'life') {
+              const maxLives = CONFIG.lives.max + 2;
+              this.lives = Math.min(this.lives + 1, maxLives);
+            } else if (collected === 'beret') {
+              this._beretUntil = this.lastTimestamp + 5000;
+            } else if (collected === 'coin') {
+              // Boina negra — +2 puntos, sonido de moneda
+              this.scoreManager.addPoints(2);
+              this.audioManager.playCoin();
+            }
+          }
+
+          // Collision check (skip if invincible)
+          if (!isInvincible && this._checkCollision(beretActive)) {
+            this.lives -= 1;
+            if (this.lives <= 0) {
+              this.transitionTo(GameState.GAMEOVER);
+            } else {
+              // Perder vida: sonido "ouch", NO game over
+              this.audioManager.playOuch();
+              this.physics.reset(this.dims.height / 2);
+              this._invincibleUntil = this.lastTimestamp + 1500;
+            }
+          }
+        }
+
+        this.cloudLayer.update(deltaTime, isPlaying);
+      }
+
+      _checkCollision(beretActive) {
+        const ghostyY   = this.physics.getY();
+        const size      = this.dims.ghostySize;
+        const inset     = size * CONFIG.ghosty.collisionInset;
+        const scoreBarH = CONFIG.ui.scoreBarHeight;
+
+        const gLeft   = this.dims.ghostyX - size / 2 + inset;
+        const gRight  = this.dims.ghostyX + size / 2 - inset;
+        const gTop    = ghostyY - size / 2 + inset;
+        const gBottom = ghostyY + size / 2 - inset;
+
+        const pipesActive = this.lastTimestamp >= this._pipeDelayUntil;
+
+        // Border collisions always apply (even with beret)
+        if (pipesActive) {
+          if (gTop    <= 0)                              return true;
+          if (gBottom >= this.dims.height - scoreBarH)  return true;
+        }
+
+        // Pipe collisions skipped when beret is active
+        if (!pipesActive || beretActive) return false;
+
+        const pipeWidth = this.dims.pipeWidth;
+        for (const pipe of this.pipeManager.getPipes()) {
+          const pLeft  = pipe.x;
+          const pRight = pipe.x + pipeWidth;
+          if (gRight <= pLeft || gLeft >= pRight) continue;
+          const topPipeBottom = pipe.gapCenterY - pipe.gapSize / 2;
+          const bottomPipeTop = pipe.gapCenterY + pipe.gapSize / 2;
+          if (gTop    < topPipeBottom) return true;
+          if (gBottom > bottomPipeTop) return true;
+        }
+
+        return false;
+      }
+
+      render() {
+        const timestamp    = this.lastTimestamp || 0;
+        const isInvincible = timestamp < this._invincibleUntil;
+        const beretActive  = timestamp < this._beretUntil;
+        const pipesActive  = this.state === GameState.PLAYING && timestamp >= this._pipeDelayUntil;
+
+        let ghostyY;
+        if (this.state === GameState.IDLE || this.state === GameState.INTRO) {
+          const bobAmp  = this.dims.height * CONFIG.ghosty.bobAmplitude;
+          const bobFreq = CONFIG.ghosty.bobFrequency;
+          ghostyY = this.dims.height / 2 + Math.sin(timestamp * bobFreq) * bobAmp;
+        } else {
+          ghostyY = this.physics.getY();
+        }
+
+        this.renderer.drawBackground(this.bgImg1, this.bgImg2, this.scoreManager.getScore());
+        this.renderer.drawClouds(this.cloudLayer.getClouds());
+
+        if (pipesActive) {
+          this.renderer.drawPipes(this.pipeManager.getPipes(), this.dims.pipeWidth);
+        }
+
+        // Draw power-ups
+        if (this.state === GameState.PLAYING) {
+          this.renderer.drawPowerUps(this.powerUpManager.getPowerUps(), timestamp);
+        }
+
+        this.renderer.drawGhosty(
+          this.dims.ghostyX, ghostyY,
+          this.ghostyImg, this.dims.ghostySize,
+          isInvincible, beretActive,
+          this.physics.getVelocity()
+        );
+
+        this.renderer.drawScoreBar(
+          this.scoreManager.getScore(),
+          this.scoreManager.getHighScore(),
+          this.lives,
+          CONFIG.lives.max,
+          this.playerName,
+          this._beretUntil,
+          timestamp
+        );
+
+        if (this.state === GameState.IDLE) {
+          this.renderer.drawIdleOverlay(this.isMobile);
+        } else if (this.state === GameState.PLAYING && timestamp < this._pipeDelayUntil) {
+          const secondsLeft = Math.ceil((this._pipeDelayUntil - timestamp) / 1000);
+          this.renderer.drawCountdown(secondsLeft);
+        } else if (this.state === GameState.GAMEOVER) {
+          this.renderer.drawGameOverOverlay(this.scoreManager.getScore(), this.playerName);
+        }
+      }
+
+      handleFlap() {
+        if (this.state === GameState.INTRO) return; // ignore flap on intro
+        if (this.state === GameState.IDLE) {
+          this.transitionTo(GameState.PLAYING);
+          this.audioManager.playJump();
+        } else if (this.state === GameState.PLAYING) {
+          this.physics.applyFlap();
+          this.audioManager.playJump();
+        } else if (this.state === GameState.GAMEOVER) {
+          this.transitionTo(GameState.IDLE);
+        }
+      }
+
+      transitionTo(newState) {
+        if (newState === GameState.IDLE) {
+          this.reset();
+          this.state = GameState.IDLE;
+        } else if (newState === GameState.PLAYING) {
+          this._pipeDelayUntil  = this.lastTimestamp + 3000;
+          this._invincibleUntil = this.lastTimestamp + 3000;
+          this.state = GameState.PLAYING;
+        } else if (newState === GameState.GAMEOVER) {
+          this.audioManager.playGameOver();
+          this.scoreManager.saveHighScore();
+          this.scoreManager.saveNamedScore(this.playerName, this.scoreManager.getScore());
+          this.state = GameState.GAMEOVER;
+        }
+      }
+
+      reset() {
+        this.lives        = CONFIG.lives.max;
+        this._beretUntil  = 0;
+        this.scoreManager.reset();
+        this.physics.reset(this.dims.height / 2);
+        this.pipeManager.reset();
+        this.cloudLayer.reset();
+        this.powerUpManager.reset();
+      }
+
+      handleResize() {
+        const dpr = window.devicePixelRatio || 1;
+        const W   = window.innerWidth;
+        const H   = window.innerHeight;
+        this.canvas.width  = Math.round(W * dpr);
+        this.canvas.height = Math.round(H * dpr);
+        this.canvas.style.width  = W + 'px';
+        this.canvas.style.height = H + 'px';
+        this.ctx.scale(dpr, dpr);
+
+        this.dims = this._calcDims();
+
+        this.physics        = new PhysicsEngine(this.dims.height);
+        this.pipeManager    = new PipeManager(this.dims.width, this.dims.height);
+        this.cloudLayer     = new CloudLayer(this.dims.width, this.dims.height);
+        this.powerUpManager = new PowerUpManager(this.dims.width, this.dims.height);
+        this.renderer.resize(W, H);
+
+        this.reset();
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Bootstrap
+    // ─────────────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('gameCanvas');
+      const game   = new GameController(canvas);
+      game.init();
+    });
 
   </script>
 </body>
